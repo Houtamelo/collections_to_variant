@@ -335,7 +335,7 @@ impl<T: ArrayElement> GodotConvert for Vec<T> {
 
 impl<T: ArrayElement> ToGodot for Vec<T> {
 	fn to_godot(&self) -> Self::Via {
-		Array::from(self.as_slice())
+		Array::from(&*self)
 	}
 }
 
