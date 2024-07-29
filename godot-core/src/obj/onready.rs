@@ -169,7 +169,7 @@ impl<T> OnReady<T> {
     pub fn init(&mut self, value: T) {
         match &self.state {
             InitState::ManualUninitialized { .. } => {
-                self.state = InitState::Initialized { value };
+                self.state = InitState::ManualInitialized { value };
             }
             InitState::AutoPrepared { .. } => {
                 panic!("cannot call init() on auto-initialized OnReady objects")
@@ -178,7 +178,8 @@ impl<T> OnReady<T> {
                 // SAFETY: Loading is ephemeral state that is only set in init_auto() and immediately overwritten.
                 unsafe { std::hint::unreachable_unchecked() }
             }
-            InitState::Initialized { .. } => {
+            | InitState::ManualInitialized { .. } 
+            | InitState::Initialized { .. } => {
                 panic!("already initialized; did you call init() more than once?")
             }
         };
@@ -191,7 +192,8 @@ impl<T> OnReady<T> {
     pub(crate) fn init_auto(&mut self, base: &Gd<Node>) {
         // Two branches needed, because mem::replace() could accidentally overwrite an already initialized value.
         match &self.state {
-            InitState::ManualUninitialized => return, // skipped
+            | InitState::ManualUninitialized
+            | InitState::ManualInitialized { .. } => return, // skipped
             InitState::AutoPrepared { .. } => {}      // handled below
             InitState::AutoInitializing => {
                 // SAFETY: Loading is ephemeral state that is only set below and immediately overwritten.
@@ -232,7 +234,8 @@ impl<T> std::ops::Deref for OnReady<T> {
                 panic!("OnReady automatic value uninitialized, is only available in ready()")
             }
             InitState::AutoInitializing => unreachable!(),
-            InitState::Initialized { value } => value,
+            | InitState::Initialized { value }
+            | InitState::ManualInitialized { value } => value,
         }
     }
 }
@@ -244,7 +247,8 @@ impl<T> std::ops::DerefMut for OnReady<T> {
     /// If the value is not yet initialized.
     fn deref_mut(&mut self) -> &mut Self::Target {
         match &mut self.state {
-            InitState::Initialized { value } => value,
+            | InitState::Initialized { value }
+            | InitState::ManualInitialized { value } => value,
             InitState::ManualUninitialized { .. } | InitState::AutoPrepared { .. } => {
                 panic!("value not yet initialized")
             }
@@ -280,6 +284,7 @@ type InitFn<T> = dyn FnOnce(&Gd<Node>) -> T;
 
 enum InitState<T> {
     ManualUninitialized,
+	ManualInitialized { value: T },
     AutoPrepared { initializer: Box<InitFn<T>> },
     AutoInitializing, // needed because state cannot be empty
     Initialized { value: T },
